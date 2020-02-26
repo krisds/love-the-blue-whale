@@ -5,7 +5,7 @@ local font = nil
 
 
 local whale = nil
-local whale_animation = nil
+local blue_animation = nil
 local pinky = nil
 local pinky_animation = nil
 local whales = {}
@@ -142,7 +142,7 @@ function spawn_submarines()
         add_a_submarine()
     end
     
-    shedule(2.5, spawn_submarines)
+    shedule(5, spawn_submarines)
 end
 
 
@@ -213,7 +213,7 @@ function add_pinky()
     if not pinky then
         pinky = make_a_thing(pinky_animation, WIDTH * 1/4, OCEAN_LEVEL/2, 48/2)
         pinky.steer = function(pinky, dt)
-            pinky.x = pinky.x + 1.3
+            pinky.x = pinky.x + 1.1
             -- TODO Up and down a bit
         end
     end
@@ -233,23 +233,30 @@ local function initialize()
     -- https://www.dafont.com/pecita.font
     font = love.graphics.newFont("assets/Pecita.otf", 24)
     
-    local whale_swim_animation = make_an_animation({
+    local blue_swim_animation = make_an_animation({
         make_a_sprite("assets/whale.swim.1.png", 0.5, 0.4),
         make_a_sprite("assets/whale.swim.2.png", 0.5, 0.4)
         }, 4)
         
-    pinky_animation = make_an_animation({
+    local blue_hurt_sprite = make_a_sprite("assets/whale.hurt.png", 0.5, 0.4)
+    
+    blue_animation = make_state_based_animation()
+    blue_animation.define('swimming', blue_swim_animation)
+    blue_animation.define('hurt', blue_hurt_sprite, 1, 'swimming')
+    blue_animation.play('swimming')
+    
+    local pinky_swim_animation = make_an_animation({
         make_a_sprite("assets/pinky.swim.1.png", 0.5, 0.4),
         make_a_sprite("assets/pinky.swim.2.png", 0.5, 0.4)
         }, 4)
 
-    local whale_hurt_sprite = make_a_sprite("assets/whale.hurt.png", 0.5, 0.4)
-    
-    whale_animation = make_state_based_animation()
-    whale_animation.define('swimming', whale_swim_animation)
-    whale_animation.define('hurt', whale_hurt_sprite, 1, 'swimming')
-    whale_animation.play('swimming')
-    
+    local pinky_hurt_sprite = make_a_sprite("assets/pinky.hurt.png", 0.5, 0.4)
+
+    pinky_animation = make_state_based_animation()
+    pinky_animation.define('swimming', pinky_swim_animation)
+    pinky_animation.define('hurt', pinky_hurt_sprite, 1, 'swimming')
+    pinky_animation.play('swimming')
+
     blue_heart_sprite = make_a_sprite("assets/heart.blue.png", 0.5, 0.9)
     pinky_heart_sprite = make_a_sprite("assets/heart.pinky.png", 0.5, 0.9)
     boat_sprite = make_a_sprite("assets/boat.png", 0.6, 0.6)
@@ -268,7 +275,8 @@ playing['start'] = function()
     
     level = 0
     hearts_collected = 0
-    hearts_given = 0
+    blue_hearts = 0
+    pinky_hearts = 0
     give_timeout = 0
     hearts = {}
     boats = {}
@@ -280,7 +288,7 @@ playing['start'] = function()
     shedule(0.5, spawn_waves)
 
     -- Then its inhabitants.
-    whale = make_a_thing(whale_animation, WIDTH * 1/2, OCEAN_LEVEL - 10, 48/2)
+    whale = make_a_thing(blue_animation, WIDTH * 1/2, OCEAN_LEVEL - 10, 48/2)
     whale.world_interaction = floating
 
     shedule(1, spawn_pinky)
@@ -335,45 +343,55 @@ playing['update'] = function(dt)
     
     on_collisions(whale, hearts, function(_, heart)
         heart.delete()
+        blue_hearts = blue_hearts + 1
         hearts_collected = hearts_collected + 1
         if not plop_sound:isPlaying() then plop_sound:play() end
     end)
 
     on_collisions(whale, boats, function(_, boat)
         boat.delete()
-        hearts_collected = hearts_collected - 1
-        whale_animation.play('hurt')
+        blue_hearts = blue_hearts - 1
+        blue_animation.play('hurt')
         if not hit_sound:isPlaying() then hit_sound:play() end
     end)
 
     on_collisions(whale, submarines, function(_, sub)
         sub.delete()
-        hearts_collected = hearts_collected - 2
-        whale_animation.play('hurt')
+        blue_hearts = blue_hearts - 2
+        blue_animation.play('hurt')
         if not hit_sound:isPlaying() then hit_sound:play() end
     end)
     
     on_collisions(whale, planes, function(_, plane)
         plane.delete()
-        hearts_collected = hearts_collected - 3
-        whale_animation.play('hurt')
+        blue_hearts = blue_hearts - 3
+        blue_animation.play('hurt')
         if not hit_sound:isPlaying() then hit_sound:play() end
     end)
     
     on_collisions(whale, whales, function(_, pinky)
-        if give_timeout <= 0 and hearts_collected > 0 then
-            hearts_given = hearts_given + 1
-            hearts_collected = hearts_collected - 1
+        if give_timeout <= 0 and blue_hearts > 0 then
+            pinky_hearts = pinky_hearts + 1
+            blue_hearts = blue_hearts - 1
             give_timeout = 0.5
             particles[#particles + 1] = make_a_particle(pinky_heart_sprite, whale.x, whale.y)
             if not plop2_sound:isPlaying() then plop2_sound:play() end
         end
     end)
 
-    level = math.max(level, 1 + math.floor((hearts_collected + hearts_given)/3))
+    if pinky ~= null and pinky.x > 50 and pinky.x < WIDTH - 50 then
+        on_collisions(pinky, submarines, function(_, sub)
+            sub.delete()
+            pinky_hearts = pinky_hearts - 2
+            pinky_animation.play('hurt')
+            if not hit_sound:isPlaying() then hit_sound:play() end
+        end)
+    end
     
-    if hearts_collected < 0 then
-        hearts_collected = 0
+    level = math.max(level, 1 + math.floor((blue_hearts + pinky_hearts)/3))
+    
+    if blue_hearts < 0 or pinky_hearts < 0 then
+        -- blue_hearts = 0
         clear_sheduler()
         go_to(game_over)
     end
@@ -409,8 +427,8 @@ playing['draw'] = function()
     draw_things(particles)
     
     love.graphics.setColor(65/255, 45/255, 78/255)
-    love.graphics.print(hearts_collected, 42, 20)
-    love.graphics.print(hearts_given, 42, 45)
+    love.graphics.print(blue_hearts, 42, 20)
+    love.graphics.print(pinky_hearts, 42, 45)
     -- love.graphics.print('@' .. level, WIDTH - 42, 20)
 
     love.graphics.setColor(255/255, 255/255, 255/255)

@@ -14,7 +14,8 @@ require("game_over")
 local state = nil
 
 hearts_collected = 0
-hearts_given = 0
+blue_hearts = 0
+pinky_hearts = 0
 
 
 function go_to(new_state)
